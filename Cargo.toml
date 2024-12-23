@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT"
 description = "A simple tool for converting DXF Entities into a string SVG"
 readme = "README.md"
+repository = "https://github.com/raisfeld-ori/dxf_to_svg"
 
 [dependencies]
 dxf = "0.6.0"

@@ -1,5 +1,12 @@
 use dxf::entities::{Entity, EntityType};
 
+/**
+Takes in a vector of entities and displays them as an SVG string.
+If an entity is not supported, it will be printed to the console and skipped.
+
+ * entities - the list of entities you wish to turn into a string.
+ * returns a string SVG representation of the entities.
+ */
 pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
     let mut svg = String::new();
     svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\">");
@@ -20,22 +27,26 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
                 ));
             }
             EntityType::Arc(arc) => {
-                // Convert DXF arc to SVG path
                 let start_angle = arc.start_angle.to_radians();
                 let end_angle = arc.end_angle.to_radians();
-                let start_x = arc.center.x + arc.radius * start_angle.cos();
-                let start_y = arc.center.y + arc.radius * start_angle.sin();
-                let end_x = arc.center.x + arc.radius * end_angle.cos();
-                let end_y = arc.center.y + arc.radius * end_angle.sin();
-                let large_arc_flag = if (arc.end_angle - arc.start_angle).abs() > 180.0 { 1 } else { 0 };
-                
+                let center_x = arc.center.x;
+                let center_y = arc.center.y;
+                let radius = arc.radius;
+                let start_x = center_x + radius * start_angle.cos();
+                let start_y = center_y + radius * start_angle.sin();
+                let end_x = center_x + radius * end_angle.cos();
+                let end_y = center_y + radius * end_angle.sin();
+                let large_arc_flag = if (end_angle - start_angle).abs() > std::f64::consts::PI { "1" } else { "0" };
+            
                 svg.push_str(&format!(
-                    r#"<path d="M {} {} A {} {} 0 {} 1 {} {}" stroke="{}" fill="none" />"#,
-                    start_x, start_y, arc.radius, arc.radius, large_arc_flag, end_x, end_y, color
+                    r#"<path d="M {} {} A {} {} {} {} {} stroke="{}" fill="none" />"#,
+                    start_x, start_y, radius, radius, large_arc_flag, end_x, end_y, color
                 ));
             }
-            // Handle other entity types (e.g., Polyline, Ellipse) similarly
-            _ => {}
+            _ => {
+                println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
+                continue;
+            }
         }
     }
     svg.push_str("</svg>");

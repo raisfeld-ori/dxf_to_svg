@@ -43,6 +43,87 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
                     start_x, start_y, radius, radius, large_arc_flag, end_x, end_y, color
                 ));
             }
+            EntityType::AngularThreePointDimension(_angular_three_point_dimension) => {
+                let point1 = &_angular_three_point_dimension.definition_point_2;
+                let point2 = &_angular_three_point_dimension.definition_point_3;
+                svg.push_str(&format!(
+                    r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" />"#,
+                    point1.x, point1.y, point2.x, point2.y, color
+                ));
+            }
+            EntityType::Arc(_angular_dimension) => {
+                let center = &_angular_dimension.center;
+                let radius = _angular_dimension.radius;
+                svg.push_str(&format!(
+                    r#"<circle cx="{}" cy="{}" r="{}" stroke="{}" fill="none" />"#,
+                    center.x,
+                    center.y,
+                    radius,
+                    color
+                ));
+            }
+            EntityType::ArcAlignedText(_angular_dimension) => {
+                let center = &_angular_dimension.center_point;
+                let radius = _angular_dimension.arc_radius;
+                let text = &_angular_dimension.text; 
+                svg.push_str(&format!(
+                    r#"<text x="{}" y="{}" fill="{}">{}</text>"#,
+                    center.x,
+                    center.y,
+                    color,
+                    text
+                ));
+            }
+            EntityType::Text(text) => {
+                svg.push_str(&format!(
+                    r#"<text x="{}" y="{}" fill="{}">{}</text>"#,
+                    text.location.x,
+                    text.location.y,
+                    color,
+                    text.value
+                ));
+            }
+            EntityType::ModelPoint(point) => {
+                svg.push_str(&format!(
+                    r#"<circle cx="{}" cy="{}" r="{}" stroke="{}" fill="none" />"#,
+                    point.location.x, point.location.y, 1.0, color
+                ));
+            }
+            EntityType::Attribute(_attribute) => {
+                println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
+                continue;
+            }
+            EntityType::Circle(_ellipse) => {
+                let center = &_ellipse.center;
+                let radius = _ellipse.radius;
+                svg.push_str(&format!(
+                    r#"<circle cx="{}" cy="{}" r="{}" stroke="{}" fill="none" />"#,
+                    center.x,
+                    center.y,
+                    radius,
+                    color
+                ));
+            }
+            EntityType::Ellipse(_ellipse) => {
+                let center = &_ellipse.center;
+                let radius = &_ellipse.normal;
+                svg.push_str(&format!(
+                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" stroke="{}" fill="none" />"#,
+                    center.x,
+                    center.y,
+                    radius.x,
+                    radius.y,
+                    color
+                ));
+            }
+            EntityType::Image(_image) => {
+                println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
+                continue;
+            }
+            EntityType::Light(_light) => {
+                println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
+                continue;
+            }
             _ => {
                 println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
                 continue;

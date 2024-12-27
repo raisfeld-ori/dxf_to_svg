@@ -51,20 +51,8 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
                     point1.x, point1.y, point2.x, point2.y, color
                 ));
             }
-            EntityType::Arc(_angular_dimension) => {
-                let center = &_angular_dimension.center;
-                let radius = _angular_dimension.radius;
-                svg.push_str(&format!(
-                    r#"<circle cx="{}" cy="{}" r="{}" stroke="{}" fill="none" />"#,
-                    center.x,
-                    center.y,
-                    radius,
-                    color
-                ));
-            }
             EntityType::ArcAlignedText(_angular_dimension) => {
                 let center = &_angular_dimension.center_point;
-                let radius = _angular_dimension.arc_radius;
                 let text = &_angular_dimension.text; 
                 svg.push_str(&format!(
                     r#"<text x="{}" y="{}" fill="{}">{}</text>"#,
@@ -92,17 +80,6 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
             EntityType::Attribute(_attribute) => {
                 println!("Unsupported entity type: {:?}. Continuing without this entity...", entity.specific);
                 continue;
-            }
-            EntityType::Circle(_ellipse) => {
-                let center = &_ellipse.center;
-                let radius = _ellipse.radius;
-                svg.push_str(&format!(
-                    r#"<circle cx="{}" cy="{}" r="{}" stroke="{}" fill="none" />"#,
-                    center.x,
-                    center.y,
-                    radius,
-                    color
-                ));
             }
             EntityType::Ellipse(_ellipse) => {
                 let center = &_ellipse.center;

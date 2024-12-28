@@ -97,7 +97,7 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
                     major_axis_length,
                     major_axis_length * ellipse.minor_axis_ratio,
                     rotation,
-                    ellipse.center.x, ellipse.center.y,
+                    ellipse.major_axis.x.powi(2), ellipse.major_axis.y.powi(2),
                     color
                 ));
             }

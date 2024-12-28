@@ -1,6 +1,124 @@
 use dxf::entities::{Entity, EntityType};
 use std::f64::consts::PI;
 
+#[derive(Debug)]
+struct Bounds {
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+}
+
+impl Bounds {
+    fn new() -> Self {
+        Bounds {
+            min_x: f64::INFINITY,
+            min_y: f64::INFINITY,
+            max_x: f64::NEG_INFINITY,
+            max_y: f64::NEG_INFINITY,
+        }
+    }
+
+    fn update(&mut self, x: f64, y: f64) {
+        self.min_x = self.min_x.min(x);
+        self.min_y = self.min_y.min(y);
+        self.max_x = self.max_x.max(x);
+        self.max_y = self.max_y.max(y);
+    }
+
+    // Add padding to the bounds
+    fn with_padding(&self, padding_percent: f64) -> Self {
+        let width = self.max_x - self.min_x;
+        let height = self.max_y - self.min_y;
+        let padding_x = width * padding_percent;
+        let padding_y = height * padding_percent;
+
+        Bounds {
+            min_x: self.min_x - padding_x,
+            min_y: self.min_y - padding_y,
+            max_x: self.max_x + padding_x,
+            max_y: self.max_y + padding_y,
+        }
+    }
+}
+
+fn calculate_bounds(entities: &[&Entity]) -> Bounds {
+    let mut bounds = Bounds::new();
+
+    for entity in entities {
+        match &entity.specific {
+            EntityType::Line(line) => {
+                bounds.update(line.p1.x, line.p1.y);
+                bounds.update(line.p2.x, line.p2.y);
+            }
+            EntityType::Circle(circle) => {
+                bounds.update(circle.center.x - circle.radius, circle.center.y - circle.radius);
+                bounds.update(circle.center.x + circle.radius, circle.center.y + circle.radius);
+            }
+            EntityType::Arc(arc) => {
+                // For arcs, we need to check start, end, and potential extreme points
+                let start_angle = arc.start_angle.to_radians();
+                let end_angle = arc.end_angle.to_radians();
+                
+                // Check start and end points
+                bounds.update(
+                    arc.center.x + arc.radius * start_angle.cos(),
+                    arc.center.y + arc.radius * start_angle.sin()
+                );
+                bounds.update(
+                    arc.center.x + arc.radius * end_angle.cos(),
+                    arc.center.y + arc.radius * end_angle.sin()
+                );
+                
+                // Check extreme points if they fall within the arc
+                let angles = [0.0, PI/2.0, PI, 3.0*PI/2.0];
+                for &angle in &angles {
+                    if is_angle_in_arc(angle, start_angle, end_angle) {
+                        bounds.update(
+                            arc.center.x + arc.radius * angle.cos(),
+                            arc.center.y + arc.radius * angle.sin()
+                        );
+                    }
+                }
+            }
+            EntityType::LwPolyline(lwpolyline) => {
+                for vertex in &lwpolyline.vertices {
+                    bounds.update(vertex.x, vertex.y);
+                }
+            }
+            EntityType::Polyline(polyline) => {
+                for vertex in polyline.vertices() {
+                    bounds.update(vertex.location.x, vertex.location.y);
+                }
+            }
+            EntityType::Ellipse(ellipse) => {
+                // Calculate the bounding box of the ellipse
+                let major_axis_length = (
+                    ellipse.major_axis.x.powi(2) + 
+                    ellipse.major_axis.y.powi(2)
+                ).sqrt();
+                let minor_axis_length = major_axis_length * ellipse.minor_axis_ratio;
+                
+                bounds.update(ellipse.center.x - major_axis_length, ellipse.center.y - minor_axis_length);
+                bounds.update(ellipse.center.x + major_axis_length, ellipse.center.y + minor_axis_length);
+            }
+            EntityType::Text(text) => {
+                // For text, just use the insertion point
+                // Note: This is a simplification as it doesn't account for text size
+                bounds.update(text.location.x, text.location.y);
+            }
+            EntityType::ModelPoint(point) => {
+                bounds.update(point.location.x, point.location.y);
+            }
+            _ => {
+                println!("Unsupported entity type for bounds calculation: {:?}", entity.common.layer);
+            }
+        }
+    }
+
+    bounds
+}
+
 /**
 Takes in a vector of entities and displays them as an SVG string.
 If an entity is not supported, it will be printed to the console and skipped.
@@ -9,10 +127,15 @@ If an entity is not supported, it will be printed to the console and skipped.
 * Returns a string SVG representation of the entities.
 */
 pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
+    let bounds = calculate_bounds(&entities).with_padding(1.0);
     let mut svg = String::new();
-    svg.push_str(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="100%" width="100%" viewBox="0 0 100 100">"#,
-    );
+    svg.push_str(&format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{} {} {} {}">"#,
+        bounds_with_padding.min_x,
+        bounds_with_padding.min_y,
+        bounds_with_padding.max_x - bounds_with_padding.min_x,
+        bounds_with_padding.max_y - bounds_with_padding.min_y
+    ));
 
     for entity in entities {
         let color = if entity.common.color_name.trim().is_empty() {

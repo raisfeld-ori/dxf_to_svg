@@ -131,10 +131,10 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
     let mut svg = String::new();
     svg.push_str(&format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{} {} {} {}">"#,
-        bounds_with_padding.min_x,
-        bounds_with_padding.min_y,
-        bounds_with_padding.max_x - bounds_with_padding.min_x,
-        bounds_with_padding.max_y - bounds_with_padding.min_y
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x - bounds.min_x,
+        bounds.max_y - bounds.min_y
     ));
 
     for entity in entities {

@@ -42,6 +42,21 @@ impl Bounds {
     }
 }
 
+fn is_angle_in_arc(angle: f64, start: f64, end: f64) -> bool {
+    let mut angle = angle % (2.0 * PI);
+    let mut start = start % (2.0 * PI);
+    let mut end = end % (2.0 * PI);
+    
+    if start > end {
+        end += 2.0 * PI;
+        if angle < start {
+            angle += 2.0 * PI;
+        }
+    }
+    
+    angle >= start && angle <= end
+}
+
 fn calculate_bounds(entities: &[&Entity]) -> Bounds {
     let mut bounds = Bounds::new();
 

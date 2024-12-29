@@ -44,7 +44,7 @@ impl Bounds {
 
 fn is_angle_in_arc(angle: f64, start: f64, end: f64) -> bool {
     let mut angle = angle % (2.0 * PI);
-    let mut start = start % (2.0 * PI);
+    let start = start % (2.0 * PI);
     let mut end = end % (2.0 * PI);
     
     if start > end {
@@ -126,12 +126,33 @@ fn calculate_bounds(entities: &[&Entity]) -> Bounds {
                 bounds.update(point.location.x, point.location.y);
             }
             _ => {
-                println!("Unsupported entity type for bounds calculation: {:?}", entity.common.layer);
+                continue;
             }
         }
     }
 
     bounds
+}
+
+/**
+a struct containing a bunch of options around the svg.
+Fill each of these or use None for default when using dxf_to_svg.
+
+* `use_bounds` - if true, will add a viewBox to the svg at the size of the bounding box
+* `padding` - the amount of padding to add to the viewBox
+ */
+pub struct SvgOptions{
+    use_bounds: bool,
+    padding: f64,
+}
+
+impl Default for SvgOptions {
+    fn default() -> Self {
+        Self {
+            use_bounds: true,
+            padding: 1.0,
+        }
+    }
 }
 
 /**
@@ -141,16 +162,19 @@ If an entity is not supported, it will be printed to the console and skipped.
 * `entities` - the list of entities you wish to turn into a string.
 * Returns a string SVG representation of the entities.
 */
-pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
-    let bounds = calculate_bounds(&entities).with_padding(1.0);
+pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String {
+    let options = options.unwrap_or_default();
+    let bounds = calculate_bounds(&entities).with_padding(options.padding);
     let mut svg = String::new();
-    svg.push_str(&format!(
+    if options.use_bounds {svg.push_str(&format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{} {} {} {}">"#,
         bounds.min_x,
         bounds.min_y,
         bounds.max_x - bounds.min_x,
         bounds.max_y - bounds.min_y
-    ));
+    ));} else {
+        svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">");
+    }
 
     for entity in entities {
         let color = if entity.common.color_name.trim().is_empty() {
@@ -305,10 +329,6 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
                 let end_point = &dimension.definition_point_3;   // End of dimension line
                 let text_position = &dimension.insertion_point;    // Midpoint for text
                 let measurement = &dimension.dimension_base.text; // Measurement text
-            
-                svg.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
-                svg.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" xmlns:xlink="http://www.w3.org/1999/xlink">"#);
-            
                 // Add the dimension line
                 svg.push_str(&format!(
                     r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="black" />"#,
@@ -336,6 +356,11 @@ pub fn dxf_to_svg(entities: Vec<&Entity>) -> String {
     svg
 }
 
+pub fn dxf_file_to_svg(file_path: &str, options: Option<SvgOptions>) -> String {
+    let entities = dxf::Drawing::load_file(file_path).unwrap();
+    dxf_to_svg(entities.entities().collect(), options)
+}
+
 /// Escape special characters in XML text content
 fn escape_xml_text(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -354,7 +379,7 @@ mod tests {
     #[test]
     fn test_basic_entities() {
         // Test empty vector
-        let empty_svg = dxf_to_svg(vec![]);
+        let empty_svg = dxf_to_svg(vec![], Some(SvgOptions {use_bounds: false, padding: 1.0}));
         assert!(empty_svg.contains("viewBox=\"0 0 100 100\""));
         assert!(empty_svg.starts_with("<svg"));
         assert!(empty_svg.ends_with("</svg>"));
@@ -367,7 +392,7 @@ mod tests {
             )
         ));
         entities.push(&line);
-        let result = dxf_to_svg(entities);
+        let result = dxf_to_svg(entities, Some(SvgOptions::default()));
         assert!(result.contains("viewBox"));
         assert!(result.contains("<line"));
         assert!(result.contains("stroke=\"black\""));
@@ -379,5 +404,13 @@ mod tests {
             escape_xml_text("Test & <example>"),
             "Test &amp; &lt;example&gt;"
         );
+    }
+
+    #[test]
+    fn test_file_to_svg() {
+        let svg = dxf_file_to_svg("tests/test.dxf", Some(SvgOptions::default()));
+        assert!(svg.contains("viewBox"));
+        assert!(svg.contains("<line"));
+        assert!(svg.contains("stroke=\"black\""));
     }
 }

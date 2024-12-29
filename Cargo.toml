@@ -1,7 +1,9 @@
 [package]
 name = "dxf_to_svg"
-version = "0.7.5"
+version = "0.9.0"
 edition = "2021"
+keywords = ["cad", "dxf", "svg", "png", "graphics"]
+categories = ["converting"]
 license = "MIT"
 description = "A simple tool for converting DXF Entities into a string SVG"
 readme = "README.md"

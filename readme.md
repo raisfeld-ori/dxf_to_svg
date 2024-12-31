@@ -27,11 +27,7 @@ You can also replace the None for the second argument with ```dxf_to_svg::SvgOpt
 
 ## will I continue working on this?
 
-This is going to be the final version for now.
-I plan on making a new version of this library by
-converting the python package [dxf2svg](https://bitbucket.org/lukaszlaba/dxf2svg/wiki/Home) to rust code.
+I quit working on this project and instead started using
+CloudConvert instead. Works way better, but costs some money
 
-Once the new package is out I will mention it here.
-
-While I won't work on this package, if you send me a pull
-request or an issue on the github repo I will respond.
+However, feel free to continue using this project. It's not perfect but it still works fairly well.

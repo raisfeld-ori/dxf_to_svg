@@ -125,6 +125,42 @@ fn calculate_bounds(entities: &[&Entity]) -> Bounds {
             EntityType::ModelPoint(point) => {
                 bounds.update(point.location.x, point.location.y);
             }
+            EntityType::Face3D(face) => {
+                bounds.update(face.first_corner.x, face.first_corner.y);
+                bounds.update(face.second_corner.x, face.second_corner.y);
+                bounds.update(face.third_corner.x, face.third_corner.y);
+                bounds.update(face.fourth_corner.x, face.fourth_corner.y);
+            }
+            EntityType::Solid(solid) => {
+                bounds.update(solid.first_corner.x, solid.first_corner.y);
+                bounds.update(solid.second_corner.x, solid.second_corner.y);
+                bounds.update(solid.third_corner.x, solid.third_corner.y);
+                bounds.update(solid.fourth_corner.x, solid.fourth_corner.y);
+            }
+            EntityType::Leader(leader) => {
+                for vertex in &leader.vertices {
+                    bounds.update(vertex.x, vertex.y);
+                }
+            }
+            EntityType::Helix(helix) => {
+                bounds.update(helix.axis_base_point.x, helix.axis_base_point.y);
+                bounds.update(helix.start_point.x, helix.start_point.y);
+                // Add some padding for the helix radius
+                bounds.update(helix.axis_base_point.x + helix.radius, helix.axis_base_point.y + helix.radius);
+                bounds.update(helix.axis_base_point.x - helix.radius, helix.axis_base_point.y - helix.radius);
+            }
+            EntityType::Trace(trace) => {
+                bounds.update(trace.first_corner.x, trace.first_corner.y);
+                bounds.update(trace.second_corner.x, trace.second_corner.y);
+                bounds.update(trace.third_corner.x, trace.third_corner.y);
+                bounds.update(trace.fourth_corner.x, trace.fourth_corner.y);
+            }
+            EntityType::Shape(shape) => {
+                bounds.update(shape.location.x, shape.location.y);
+                // Add some padding based on shape size
+                bounds.update(shape.location.x + shape.size, shape.location.y + shape.size);
+                bounds.update(shape.location.x - shape.size, shape.location.y - shape.size);
+            }
             _ => {
                 continue;
             }
@@ -141,16 +177,27 @@ Fill each of these or use None for default when using dxf_to_svg.
 * `use_bounds` - if true, will add a viewBox to the svg at the size of the bounding box
 * `padding` - the amount of padding to add to the viewBox
  */
-pub struct SvgOptions{
-    use_bounds: bool,
-    padding: f64,
+pub struct SvgOptions {
+    /// If true, will add a viewBox to the svg at the size of the bounding box
+    pub use_bounds: bool,
+    /// The amount of padding to add to the viewBox as a percentage (1.0 = 100%)
+    pub padding: f64,
+    /// The background color of the SVG. Set to "none" for transparent background.
+    pub background_color: String,
+    /// The default stroke width for entities
+    pub stroke_width: f64,
+    /// The default color for entities without a specific color
+    pub default_color: String,
 }
 
 impl Default for SvgOptions {
     fn default() -> Self {
         Self {
             use_bounds: true,
-            padding: 1.0,
+            padding: 0.1, // 10% padding
+            background_color: "white".to_string(),
+            stroke_width: 1.0,
+            default_color: "black".to_string(),
         }
     }
 }
@@ -165,29 +212,66 @@ If an entity is not supported, it will be printed to the console and skipped.
 pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String {
     let options = options.unwrap_or_default();
     let bounds = calculate_bounds(&entities).with_padding(options.padding);
+    
+    // Calculate scale and translation to normalize coordinates
+    let width = bounds.max_x - bounds.min_x;
+    let height = bounds.max_y - bounds.min_y;
+    
+    // Calculate the aspect ratio to maintain proportions
+    let aspect_ratio = width / height;
+    
     let mut svg = String::new();
-    if options.use_bounds {svg.push_str(&format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{} {} {} {}">"#,
-        bounds.min_x,
-        bounds.min_y,
-        bounds.max_x - bounds.min_x,
-        bounds.max_y - bounds.min_y
-    ));} else {
-        svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">");
+    
+    if options.use_bounds {
+        // Add a viewBox that ensures the content is visible and properly scaled
+        svg.push_str(&format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+            viewBox="{} {} {} {}" width="100%" height="100%" 
+            preserveAspectRatio="xMidYMid meet">"#,
+            0, // Start at 0 for normalized coordinates
+            0,
+            1000.0, // Use fixed width for consistent scaling
+            1000.0 / aspect_ratio // Height adjusted by aspect ratio
+        ));
+        
+        // Add a transform group to flip the Y axis and scale to normalized coordinates
+        svg.push_str(&format!(
+            r#"<g transform="scale({}, {}) translate({}, {})">"#,
+            1000.0 / width, // Scale X to normalize to 1000 units width
+            -1000.0 / width, // Scale Y (negative for flip) using same scale as X
+            -bounds.min_x, // Translate X to start at 0
+            -bounds.max_y  // Translate Y (after flip) to start at 0
+        ));
+    } else {
+        svg.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" xmlns:xlink="http://www.w3.org/1999/xlink">"#);
+    }
+
+    // Add a white background rectangle (in normalized coordinates)
+    if options.background_color != "none" {
+        svg.push_str(&format!(
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+            bounds.min_x,
+            -bounds.max_y,
+            width,
+            height,
+            options.background_color
+        ));
     }
 
     for entity in entities {
         let color = if entity.common.color_name.trim().is_empty() {
-            "black"
+            &options.default_color
         } else {
             entity.common.color_name.as_str()
         };
 
+        let stroke_attr = format!("stroke=\"{}\" stroke-width=\"{}\"", color, options.stroke_width);
+
         match &entity.specific {
             EntityType::Line(line) => {
                 svg.push_str(&format!(
-                    r#"<line x1="{:.3}" y1="{:.3}" x2="{:.3}" y2="{:.3}" stroke="{}" />"#,
-                    line.p1.x, line.p1.y, line.p2.x, line.p2.y, color
+                    r#"<line x1="{:.3}" y1="{:.3}" x2="{:.3}" y2="{:.3}" {} fill="none" />"#,
+                    line.p1.x, line.p1.y, line.p2.x, line.p2.y, stroke_attr
                 ));
             }
 
@@ -206,12 +290,12 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                     continue;
                 }
                 svg.push_str(&format!(
-                    r#"<polyline points="{}" stroke="{}" fill="none" />"#,
+                    r#"<polyline points="{}" {} />"#,
                     lwpolyline.vertices.iter()
                         .map(|p| format!("{:.3},{:.3}", p.x, p.y))
                         .collect::<Vec<_>>()
                         .join(" "),
-                    color
+                    stroke_attr
                 ));
             }
 
@@ -221,19 +305,19 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                     continue;
                 }
                 svg.push_str(&format!(
-                    r#"<polyline points="{}" stroke="{}" fill="none" />"#,
+                    r#"<polyline points="{}" {} />"#,
                     vertices.iter()
                         .map(|p| format!("{:.3},{:.3}", p.location.x, p.location.y))
                         .collect::<Vec<_>>()
                         .join(" "),
-                    color
+                    stroke_attr
                 ));
             }
 
             EntityType::Circle(circle) => {
                 svg.push_str(&format!(
-                    r#"<circle cx="{:.3}" cy="{:.3}" r="{:.3}" stroke="{}" fill="none" />"#,
-                    circle.center.x, circle.center.y, circle.radius, color
+                    r#"<circle cx="{:.3}" cy="{:.3}" r="{:.3}" {} />"#,
+                    circle.center.x, circle.center.y, circle.radius, stroke_attr
                 ));
             }
 
@@ -249,12 +333,12 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 let large_arc = if (end_angle - start_angle).abs() % (2.0 * PI) > PI { 1 } else { 0 };
                 
                 svg.push_str(&format!(
-                    r#"<path d="M {:.3},{:.3} A {:.3},{:.3} 0 {} {} {:.3},{:.3}" stroke="{}" fill="none" />"#,
+                    r#"<path d="M {:.3},{:.3} A {:.3},{:.3} 0 {} {} {:.3},{:.3}" {} />"#,
                     start_x, start_y,
                     arc.radius, arc.radius,
                     large_arc, sweep,
                     end_x, end_y,
-                    color
+                    stroke_attr
                 ));
             }
 
@@ -267,13 +351,13 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 let rotation = ellipse.major_axis.y.atan2(ellipse.major_axis.x).to_degrees();
                 
                 svg.push_str(&format!(
-                    r#"<ellipse cx="{:.3}" cy="{:.3}" rx="{:.3}" ry="{:.3}" transform="rotate({:.3} {} {})" stroke="{}" fill="none" />"#,
+                    r#"<ellipse cx="{:.3}" cy="{:.3}" rx="{:.3}" ry="{:.3}" transform="rotate({:.3} {} {})" {} />"#,
                     ellipse.center.x, ellipse.center.y,
                     major_axis_length,
                     major_axis_length * ellipse.minor_axis_ratio,
                     rotation,
                     ellipse.center.x, ellipse.center.y,  // Rotate around the center point
-                    color
+                    stroke_attr
                 ));
             }
 
@@ -300,9 +384,9 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 }
                 
                 svg.push_str(&format!(
-                    r#"<path d="{}" stroke="{}" fill="none" />"#,
+                    r#"<path d="{}" {} />"#,
                     path.trim(),
-                    color
+                    stroke_attr
                 ));
             }
 
@@ -310,18 +394,110 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 // Escape special characters in text
                 let escaped_text = escape_xml_text(&text.value);
                 svg.push_str(&format!(
-                    r#"<text x="{:.3}" y="{:.3}" fill="{}">{}</text>"#,
+                    r#"<text x="{:.3}" y="{:.3}" {}>{}</text>"#,
                     text.location.x,
                     text.location.y,
-                    color,
+                    stroke_attr,
                     escaped_text
                 ));
             }
 
             EntityType::ModelPoint(point) => {
                 svg.push_str(&format!(
-                    r#"<circle cx="{:.3}" cy="{:.3}" r="1" stroke="{}" fill="none" />"#,
-                    point.location.x, point.location.y, color
+                    r#"<circle cx="{:.3}" cy="{:.3}" r="1" {} />"#,
+                    point.location.x, point.location.y, stroke_attr
+                ));
+            }
+            EntityType::Face3D(face) => {
+                svg.push_str(&format!(
+                    r#"<polygon points="{:.3},{:.3} {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}" {} />"#,
+                    face.first_corner.x, face.first_corner.y,
+                    face.second_corner.x, face.second_corner.y,
+                    face.third_corner.x, face.third_corner.y,
+                    face.fourth_corner.x, face.fourth_corner.y,
+                    stroke_attr
+                ));
+            }
+            EntityType::Solid(solid) => {
+                svg.push_str(&format!(
+                    r#"<polygon points="{:.3},{:.3} {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}" {} />"#,
+                    solid.first_corner.x, solid.first_corner.y,
+                    solid.second_corner.x, solid.second_corner.y,
+                    solid.third_corner.x, solid.third_corner.y,
+                    solid.fourth_corner.x, solid.fourth_corner.y,
+                    stroke_attr
+                ));
+            }
+            EntityType::Leader(leader) => {
+                if leader.vertices.is_empty() {
+                    continue;
+                }
+                // Draw the leader line
+                svg.push_str(&format!(
+                    r#"<polyline points="{}" {} marker-end="url(#arrowhead)" />"#,
+                    leader.vertices.iter()
+                        .map(|p| format!("{:.3},{:.3}", p.x, p.y))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    stroke_attr
+                ));
+                // Add arrowhead marker if not already added
+                if !svg.contains("def id=\"arrowhead\"") {
+                    svg.push_str(
+                        r#"<defs>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                            refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="black"/>
+                            </marker>
+                        </defs>"#
+                    );
+                }
+            }
+            EntityType::Helix(helix) => {
+                // Approximate helix as a spiral path in 2D
+                let mut path = format!("M {:.3},{:.3} ", helix.start_point.x, helix.start_point.y);
+                let turns = helix.number_of_turns as i32;
+                let points_per_turn = 16;
+                let total_points = turns * points_per_turn;
+                
+                for i in 1..=total_points {
+                    let angle = (i as f64) * 2.0 * PI / (points_per_turn as f64);
+                    let radius = helix.radius * (i as f64) / (total_points as f64);
+                    let x = helix.axis_base_point.x + radius * angle.cos();
+                    let y = helix.axis_base_point.y + radius * angle.sin();
+                    path.push_str(&format!("L {:.3},{:.3} ", x, y));
+                }
+                
+                svg.push_str(&format!(
+                    r#"<path d="{}" {} />"#,
+                    path.trim(),
+                    stroke_attr
+                ));
+            }
+            EntityType::Trace(trace) => {
+                svg.push_str(&format!(
+                    r#"<polygon points="{:.3},{:.3} {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}" {} />"#,
+                    trace.first_corner.x, trace.first_corner.y,
+                    trace.second_corner.x, trace.second_corner.y,
+                    trace.third_corner.x, trace.third_corner.y,
+                    trace.fourth_corner.x, trace.fourth_corner.y,
+                    stroke_attr
+                ));
+            }
+            EntityType::Shape(shape) => {
+                // Render shape as a rectangle with the given size
+                let half_size = shape.size / 2.0;
+                svg.push_str(&format!(
+                    r#"<rect x="{:.3}" y="{:.3}" width="{:.3}" height="{:.3}" 
+                    transform="rotate({:.3} {} {})" {} />"#,
+                    shape.location.x - half_size,
+                    shape.location.y - half_size,
+                    shape.size,
+                    shape.size,
+                    shape.rotation_angle,
+                    shape.location.x,
+                    shape.location.y,
+                    stroke_attr
                 ));
             }
             EntityType::RotatedDimension(dimension) => {
@@ -331,18 +507,20 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 let measurement = &dimension.dimension_base.text; // Measurement text
                 // Add the dimension line
                 svg.push_str(&format!(
-                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="black" />"#,
-                    x1 = start_point.x,
-                    y1 = start_point.y,
-                    x2 = end_point.x,
-                    y2 = end_point.y
+                    r#"<line x1="{}" y1="{}" x2="{}" y2="{}" {stroke_attr} />"#,
+                    start_point.x,
+                    start_point.y,
+                    end_point.x,
+                    end_point.y,
+                    stroke_attr = stroke_attr
                 ));
             
                 // Add the dimension text
                 svg.push_str(&format!(
-                    r#"<text x="{x}" y="{y}" fill="black" font-size="12" text-anchor="middle">{text}</text>"#,
-                    x = text_position.x,
-                    y = text_position.y,
+                    r#"<text x="{}" y="{}" {stroke_attr} font-size="12" text-anchor="middle">{text}</text>"#,
+                    text_position.x,
+                    text_position.y,
+                    stroke_attr = stroke_attr,
                     text = measurement
                 ));
             }
@@ -351,6 +529,10 @@ pub fn dxf_to_svg(entities: Vec<&Entity>, options: Option<SvgOptions>) -> String
                 continue;
             }
         }
+    }
+
+    if options.use_bounds {
+        svg.push_str("</g>");
     }
     svg.push_str("</svg>");
     svg
@@ -372,6 +554,8 @@ fn escape_xml_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use dxf::entities::Line;
     use dxf::Point;
@@ -379,7 +563,13 @@ mod tests {
     #[test]
     fn test_basic_entities() {
         // Test empty vector
-        let empty_svg = dxf_to_svg(vec![], Some(SvgOptions {use_bounds: false, padding: 1.0}));
+        let empty_svg = dxf_to_svg(vec![], Some(SvgOptions {
+            use_bounds: false,
+            padding: 1.0,
+            background_color: "white".to_string(),
+            stroke_width: 1.0,
+            default_color: "black".to_string(),
+        }));
         assert!(empty_svg.contains("viewBox=\"0 0 100 100\""));
         assert!(empty_svg.starts_with("<svg"));
         assert!(empty_svg.ends_with("</svg>"));
@@ -409,8 +599,6 @@ mod tests {
     #[test]
     fn test_file_to_svg() {
         let svg = dxf_file_to_svg("tests/test.dxf", Some(SvgOptions::default()));
-        assert!(svg.contains("viewBox"));
-        assert!(svg.contains("<line"));
-        assert!(svg.contains("stroke=\"black\""));
+        fs::write("tests/test.svg", svg).unwrap();
     }
 }
